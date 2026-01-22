@@ -1,0 +1,237 @@
+const player = document.getElementById("player");
+const gameContainer = document.getElementById("game-container");
+const scoreElement = document.getElementById("score");
+const overlay = document.getElementById("overlay");
+const startBtn = document.getElementById("start-btn");
+
+// ゲーム設定
+let score = 0;
+let isPlaying = false;
+let obstacles = [];
+let coins = [];
+let spawnTimer = 0;
+let coinSpawnTimer = 0;
+let animationId;
+let currentSpeed = 6;
+
+// 無敵モード設定
+let isInvincible = false;
+let invincibleTimer = 0;
+const INVINCIBLE_DURATION = 180; // 約3秒
+
+// 物理演算設定
+let playerY = 213;
+let velocityY = 0;
+const gravity = 0.6;
+const jumpPower = -11;
+const groundY = 213; 
+let jumpCount = 0;
+const maxJumps = 4;
+
+// --- プレイヤーの変形ロジック ---
+function updatePlayerShape() {
+  switch(jumpCount) {
+    case 0: // 地面：四角
+      player.style.borderRadius="4px"; player.style.clipPath="none"; player.style.transform="rotate(0deg)"; break;
+    case 1: // 1段：角丸＆45度
+      player.style.borderRadius="12px"; player.style.clipPath="none"; player.style.transform="rotate(45deg)"; break;
+    case 2: // 2段：円形＆90度
+      player.style.borderRadius="50%"; player.style.clipPath="none"; player.style.transform="rotate(90deg)"; break;
+    case 3: // 3段：ひし形＆135度
+      player.style.borderRadius="0px"; player.style.clipPath="polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)"; player.style.transform="rotate(135deg)"; break;
+    case 4: // 4段：三角形＆180度
+      player.style.borderRadius="0px"; player.style.clipPath="polygon(50% 0%, 100% 100%, 0% 100%)"; player.style.transform="rotate(180deg)"; break;
+  }
+}
+
+// --- ジャンプ処理（PC・スマホ共通） ---
+function jump(e) {
+  // イベントのデフォルト動作（スマホでのスクロール等）を防止
+  if(e && e.cancelable) e.preventDefault();
+  
+  if (!isPlaying) return;
+  
+  if (jumpCount < maxJumps) {
+    velocityY = jumpPower;
+    jumpCount++;
+    updatePlayerShape();
+  }
+}
+
+// イベントリスナー登録
+window.addEventListener("keydown", (e) => { if (e.code === "Space") jump(); });
+gameContainer.addEventListener("mousedown", jump);
+gameContainer.addEventListener("touchstart", jump, { passive: false });
+
+// --- 背景色・テーマカラーの更新 ---
+function updateEnvironment() {
+  const root = document.querySelector(':root');
+  if (score < 1500) root.style.setProperty('--theme-color', '#00ffff');      // Cyan
+  else if (score < 3000) root.style.setProperty('--theme-color', '#ff00ff'); // Magenta
+  else if (score < 5000) root.style.setProperty('--theme-color', '#00ff00'); // Green
+  else if (score < 8000) root.style.setProperty('--theme-color', '#ff8800'); // Orange
+  else root.style.setProperty('--theme-color', '#ffffff');                   // White (Max Level)
+}
+
+// --- 障害物生成 ---
+function spawnObstacle() {
+  const types = ["normal", "tall", "fly", "wide", "double"];
+  const type = types[Math.floor(Math.random() * types.length)];
+  const obs = document.createElement("div");
+  obs.classList.add("obstacle", "obs-" + type);
+  
+  let w=30, h=40, b=0;
+  if(type==="fly"){ w=45; h=20; b=90; }
+  else if(type==="tall"){ w=25; h=75; }
+  else if(type==="wide"){ w=60; h=25; }
+  else if(type==="double"){ w=30; h=80; }
+  
+  const obsData = { element: obs, x: 600, width: w, height: h, bottom: b };
+  obs.style.bottom = b + "px";
+  gameContainer.appendChild(obs);
+  obstacles.push(obsData);
+}
+
+// --- コイン生成 ---
+function spawnCoin() {
+  const coin = document.createElement("div");
+  coin.classList.add("coin");
+  const randomBottom = Math.floor(Math.random() * 120) + 40; 
+  const coinData = { element: coin, x: 600, width: 25, height: 25, bottom: randomBottom };
+  coin.style.bottom = randomBottom + "px";
+  gameContainer.appendChild(coin);
+  coins.push(coinData);
+}
+
+// --- 無敵発動 ---
+function activateInvincibility() {
+  isInvincible = true;
+  invincibleTimer = INVINCIBLE_DURATION;
+  player.classList.add("invincible");
+}
+
+// --- 当たり判定（矩形衝突） ---
+function checkRectCollision(rect1, rect2) {
+  return (
+    rect1.left < rect2.right &&
+    rect1.right > rect2.left &&
+    rect1.top < rect2.bottom &&
+    rect1.bottom > rect2.top
+  );
+}
+
+// --- メインゲームループ ---
+function update() {
+  if (!isPlaying) return;
+
+  // 1. 物理演算（重力）
+  velocityY += gravity;
+  playerY += velocityY;
+  
+  // 地面判定
+  if (playerY >= groundY) {
+    playerY = groundY; 
+    velocityY = 0;
+    if (jumpCount !== 0) { 
+      jumpCount = 0; 
+      updatePlayerShape(); // 着地で四角に戻る
+    }
+  }
+  player.style.top = playerY + "px";
+
+  // 2. スコア・環境更新
+  score++;
+  scoreElement.innerHTML = `SCORE: ${score}`;
+  updateEnvironment();
+
+  // 3. 難易度調整（スピードアップ＆生成頻度アップ）
+  currentSpeed = 6 + (score / 600);
+  const spawnInterval = Math.max(40, 100 - (score / 200));
+
+  // 4. 生成タイマー処理
+  spawnTimer++;
+  if (spawnTimer > spawnInterval) { spawnObstacle(); spawnTimer = 0; }
+
+  coinSpawnTimer++;
+  if (coinSpawnTimer > 200) { spawnCoin(); coinSpawnTimer = 0; }
+
+  // 5. 無敵タイマー処理
+  if (isInvincible) {
+    invincibleTimer--;
+    if (invincibleTimer <= 0) {
+      isInvincible = false;
+      player.classList.remove("invincible");
+    }
+  }
+
+  // プレイヤーの当たり判定ボックス
+  const pRect = { left: 50, right: 85, top: playerY, bottom: playerY + 35 };
+
+  // 6. コイン処理
+  for (let i = coins.length - 1; i >= 0; i--) {
+    let coin = coins[i];
+    coin.x -= currentSpeed;
+    coin.element.style.left = coin.x + "px";
+
+    const cRect = { left: coin.x, right: coin.x + coin.width, top: 250 - coin.bottom - coin.height, bottom: 250 - coin.bottom };
+
+    if (checkRectCollision(pRect, cRect)) {
+      activateInvincibility(); // 無敵化
+      coin.element.remove();
+      coins.splice(i, 1);
+      score += 100; // ボーナススコア
+    } else if (coin.x < -30) {
+      coin.element.remove(); coins.splice(i, 1);
+    }
+  }
+
+  // 7. 障害物処理
+  for (let i = obstacles.length - 1; i >= 0; i--) {
+    let obs = obstacles[i];
+    obs.x -= currentSpeed;
+    obs.element.style.left = obs.x + "px";
+
+    const oRect = { left: obs.x, right: obs.x + obs.width, top: 250 - obs.bottom - obs.height, bottom: 250 - obs.bottom };
+
+    // 無敵でなければゲームオーバー判定
+    if (!isInvincible && checkRectCollision(pRect, oRect)) {
+      gameOver();
+    }
+
+    if (obs.x < -60) { obs.element.remove(); obstacles.splice(i, 1); }
+  }
+
+  animationId = requestAnimationFrame(update);
+}
+
+// --- ゲーム開始 ---
+function startGame(e) {
+  if(e && e.cancelable) e.preventDefault();
+  
+  score = 0; isPlaying = true; spawnTimer = 0; coinSpawnTimer = 0;
+  velocityY = 0; playerY = groundY; jumpCount = 0; currentSpeed = 6;
+  isInvincible = false; invincibleTimer = 0;
+  
+  updatePlayerShape(); 
+  player.classList.remove("invincible");
+  
+  // 既存要素の削除
+  obstacles.forEach(o => o.element.remove()); obstacles = [];
+  coins.forEach(c => c.element.remove()); coins = [];
+  
+  overlay.style.display = "none";
+  update();
+}
+
+// --- ゲームオーバー ---
+function gameOver() {
+  isPlaying = false; 
+  cancelAnimationFrame(animationId);
+  overlay.style.display = "flex";
+  document.getElementById("title").innerHTML = "SYSTEM FAILURE";
+  startBtn.innerHTML = "REBOOT";
+}
+
+// スタートボタン処理（PCクリック / スマホタッチ）
+startBtn.addEventListener("click", startGame);
+startBtn.addEventListener("touchstart", startGame, { passive: false });

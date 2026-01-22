@@ -1,0 +1,25 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>NEON RUNNER ULTIMATE</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="game-wrapper">
+        <div id="game-container">
+            <div id="score">SCORE: 0</div>
+            <div id="player"></div>
+            <div class="ground"></div>
+            <div id="overlay">
+                <h1 id="title">NEON RUNNER<br>ULTIMATE</h1>
+                <p>TAP or SPACE to JUMP<br>(Max 4 Steps)</p>
+                <button id="start-btn">GAME START</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
